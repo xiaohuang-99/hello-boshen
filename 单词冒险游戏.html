@@ -161,6 +161,7 @@
   @keyframes ttsPulseMini{0%{box-shadow:0 0 0 0 rgba(20,150,140,.45)}100%{box-shadow:0 0 0 12px rgba(20,150,140,0)}}
   .sound-btn.playing{animation:ttsPulse .85s ease-out infinite;}
   .mini-say.playing{border-color:var(--teal); background:#E9FBF7; animation:ttsPulseMini .85s ease-out infinite;}
+  .opt-say.playing{background:#E4F4FB; animation:ttsPulseMini .85s ease-out infinite;}
 
   /* 拼写：自己输入 */
   .slots{display:flex; justify-content:center; gap:8px; flex-wrap:wrap; margin:14px 0 10px;}
@@ -195,7 +196,12 @@
 
   /* 选项 */
   .options{display:flex; flex-direction:column; gap:12px; margin-top:16px;}
-  .opt{min-height:62px; border-radius:16px; border:2px solid #E3EAF3; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:10px; font-weight:800; transition:transform .1s, border-color .1s, background .1s;}
+  .opt{min-height:62px; border-radius:16px; border:2px solid #E3EAF3; background:#fff; display:flex; flex-direction:row; align-items:center; gap:10px; padding:8px 12px; font-weight:800; text-align:left; transition:transform .1s, border-color .1s, background .1s;}
+  .opt-txt{flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:2px;}
+  .opt-say{flex:none; width:38px; height:38px; border-radius:12px; background:#F1F8FC; border:2px solid #E3EAF3; color:var(--teal); display:flex; align-items:center; justify-content:center; cursor:pointer; transition:transform .1s, background .1s;}
+  .opt-say svg{width:19px; height:19px;}
+  .opt-say:hover{background:#E4F4FB;}
+  .opt-say:active{transform:scale(.92);}
   .opt:active{transform:scale(.98);}
   .opt .main{font-size:17px; color:var(--ink);}
   .opt .sub{font-size:13px; color:var(--sub);}
@@ -348,7 +354,9 @@
     .pair-card.cn{font-size:19px;}
     .mini-say{min-height:58px;}
     .options{max-width:780px; margin:12px auto 0; gap:10px;}
-    .opt{min-height:58px; padding:8px;}
+    .opt{min-height:58px; padding:6px 14px;}
+    .opt-say{width:40px; height:40px;}
+    .opt-say svg{width:20px; height:20px;}
     .opt .main{font-size:22px;}
     .opt .sub{font-size:17px;}
     .passage{font-size:20px; line-height:1.8; max-width:820px; margin:0 auto; text-align:left;}
@@ -664,16 +672,18 @@ function showView(name){
   window.scrollTo(0,0);
 }
 
-/* ---------- sound: English TTS ---------- */
-let ttsVoice = null, ttsWarm = false;
+/* ---------- sound: TTS (English + Chinese) ---------- */
+let ttsVoiceEn = null, ttsVoiceZh = null, ttsWarm = false;
 function loadVoices(){
   try{
     if (!("speechSynthesis" in window)) return;
     const vs = speechSynthesis.getVoices() || [];
     if (!vs.length) return;
-    ttsVoice = vs.find(v => /^en/i.test(v.lang) && v.localService)
-            || vs.find(v => /^en([-_]US)?/i.test(v.lang) && !v.localService)
-            || vs.find(v => /^en/i.test(v.lang)) || null;
+    ttsVoiceEn = vs.find(v => /^en/i.test(v.lang) && v.localService)
+             || vs.find(v => /^en/i.test(v.lang)) || null;
+    const zhPool = vs.filter(v => /^(zh|cmn)/i.test(v.lang) && !/(HK|TW|Hant|Yue)/i.test(v.lang + " " + v.name));
+    ttsVoiceZh = zhPool.find(v => v.localService) || zhPool[0]
+             || vs.find(v => /^(zh|cmn)/i.test(v.lang)) || null;
   }catch(e){}
 }
 function ttsWarmUp(){
@@ -681,26 +691,31 @@ function ttsWarmUp(){
   ttsWarm = true;
   try{
     if (!("speechSynthesis" in window)) return;
-    if (!ttsVoice) loadVoices();
+    if (!ttsVoiceEn) loadVoices();
     const u = new SpeechSynthesisUtterance("Hi");
     u.lang = "en-US"; u.rate = 1; u.pitch = 1; u.volume = 0.02;
-    if (ttsVoice) u.voice = ttsVoice;
+    if (ttsVoiceEn) u.voice = ttsVoiceEn;
     speechSynthesis.speak(u);   // 先把语音引擎叫醒，之后点喇叭基本即时出声
   }catch(e){}
 }
-function speak(text){
+function speak(text, lang, el){
   try{
     if (!("speechSynthesis" in window)) return;
-    if (!ttsVoice) loadVoices();
+    lang = lang || "en-US";
+    const isZh = /^(zh|cmn)/i.test(lang);
+    if (!ttsVoiceEn || !ttsVoiceZh) loadVoices();
     ttsWarmUp();
     if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
     // 点在哪个喇叭上，就让它立刻有"正在播放"的视觉反馈，等声音时不会觉得没反应
-    const ae = document.activeElement;
-    const btn = (ae && ae.closest) ? ae.closest(".sound-btn, .mini-say") : null;
+    const ae = el || document.activeElement;
+    const btn = (ae && ae.closest) ? ae.closest(".sound-btn, .mini-say, .opt-say") : null;
     if (btn){ btn.classList.add("playing"); }
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = "en-US"; u.rate = 0.9; u.pitch = 1.05;
-    if (ttsVoice) u.voice = ttsVoice;
+    u.lang = isZh ? "zh-CN" : "en-US";
+    u.rate = isZh ? 0.95 : 0.9;
+    u.pitch = isZh ? 1 : 1.05;
+    const voice = isZh ? ttsVoiceZh : ttsVoiceEn;
+    if (voice) u.voice = voice;
     const clear = ()=>{ if (btn) btn.classList.remove("playing"); };
     u.onend = clear; u.onerror = clear;
     speechSynthesis.speak(u);
@@ -1081,7 +1096,7 @@ function transHTML(){
     <button class="sound-btn" data-act="say" data-text="${s.en}"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 10v4h4l5 4V6L7 10H3zm13 2a3 3 0 0 0-2-2.8V14.8A3 3 0 0 0 16 12zM14 4v1.6a6 6 0 0 1 0 10.8V18a7.5 7.5 0 0 0 0-14z"/></svg>Hear it</button>
     <div class="fb small">What does it mean? Pick one.</div>
     <div class="options">
-      ${opts.map((o,i)=>`<button class="opt" data-i="${i}"><span class="main">${o.cn}</span><span class="sub">${o.pinyin}</span></button>`).join("")}
+      ${opts.map((o,i)=>`<button class="opt" data-i="${i}"><span class="opt-say" role="button" tabindex="0" aria-label="Listen" data-cn="${o.cn}"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 10v4h4l5 4V6L7 10H3zm13 2a3 3 0 0 0-2-2.8V14.8A3 3 0 0 0 16 12zM14 4v1.6a6 6 0 0 1 0 10.8V18a7.5 7.5 0 0 0 0-14z"/></svg></span><span class="opt-txt"><span class="main">${o.cn}</span><span class="sub">${o.pinyin}</span></span></button>`).join("")}
     </div>
     <div class="fb" id="transFb"></div>`;
 }
@@ -1090,6 +1105,12 @@ function transOptions(main){
   return shuffle(list);
 }
 function onTrans(e){
+  const say = e.target.closest && e.target.closest(".opt-say");
+  if (say){                       // 点选项里的小喇叭：只朗读中文，不算选答案
+    ensureAudio(); sClick();
+    speak(say.getAttribute("data-cn"), "zh-CN", say);
+    return;
+  }
   const btn = e.target.closest(".opt");
   if (!btn || S.answered) return;
   ensureAudio();
